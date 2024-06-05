@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"misc/internal/models"
 	"os"
 	"strconv"
 	"time"
@@ -22,6 +23,12 @@ type Service interface {
 	// Close terminates the database connection.
 	// It returns an error if the connection cannot be closed.
 	Close() error
+
+	Init() error
+
+	GetHabitRule(string) (*models.HabiticaHabitRule, error)
+	GetTodoistHabiticaTextRules() ([]models.TodoistHabiticaTextRule, error)
+	GetTodoistHabiticaProjectRule(string) (models.TodoistHabiticaProjectRule, error)
 }
 
 type service struct {
@@ -48,6 +55,10 @@ func New() Service {
 
 	dbInstance = &service{
 		db: db,
+	}
+
+	if err := dbInstance.Init(); err != nil {
+		log.Fatal(err)
 	}
 	return dbInstance
 }
@@ -110,4 +121,102 @@ func (s *service) Health() map[string]string {
 func (s *service) Close() error {
 	log.Printf("Disconnected from database: %s", dburl)
 	return s.db.Close()
+}
+
+// Create initial tables in the database
+func (s *service) Init() error {
+	_, err := s.db.Exec(
+		`CREATE TABLE IF NOT EXISTS HabiticaHabitRule (
+			id INTEGER PRIMARY KEY,
+			name TEXT,
+			habitId TEXT,
+			dailyId TEXT,
+			minScore INTEGER
+		)`,
+	)
+	if err != nil {
+		return fmt.Errorf("error initializing database: %w", err)
+	}
+
+	_, err = s.db.Exec(
+		`CREATE TABLE IF NOT EXISTS TodoistHabitTextRule (
+			id INTEGER PRIMARY KEY,
+			name TEXT,
+			rule TEXT,
+			habitId TEXT
+		)`,
+	)
+	if err != nil {
+		return fmt.Errorf("error initializing database: %w", err)
+	}
+
+	_, err = s.db.Exec(
+		`CREATE TABLE IF NOT EXISTS TodoistHabitProjectRule (
+			id INTEGER PRIMARY KEY,
+			name TEXT,
+			todoistProjectId TEXT,
+			habitId TEXT
+		)`,
+	)
+
+	if err != nil {
+		return fmt.Errorf("error initializing database: %w", err)
+	}
+
+	_, err = s.db.Exec(
+		`CREATE TABLE IF NOT EXISTS TodoistHabitTextRule (
+			id INTEGER PRIMARY KEY,
+			name TEXT,
+			ruleText TEXT,
+			habitId TEXT
+		)`,
+	)
+
+	if err != nil {
+		return fmt.Errorf("error initializing database: %w", err)
+	}
+	return nil
+}
+
+func (s *service) GetHabitRule(habitId string) (*models.HabiticaHabitRule, error) {
+	var rule models.HabiticaHabitRule
+	row := s.db.QueryRow(
+		`SELECT habitId, dailyId, minScore FROM HabiticaHabitRule WHERE habitId = ?`,
+		habitId,
+	)
+	if err := row.Scan(&rule.HabitId, &rule.DailyId, &rule.MinScore); err != nil {
+		return nil, fmt.Errorf("error retrieving habit rule: %w", err)
+	}
+	return &rule, nil
+}
+
+func (s *service) GetTodoistHabiticaTextRules() ([]models.TodoistHabiticaTextRule, error) {
+	rules := make([]models.TodoistHabiticaTextRule, 0)
+	rows, err := s.db.Query(`SELECT name, rule, habitId FROM TodoistHabitTextRule;`)
+	if err != nil {
+		return rules, fmt.Errorf("error creating text rule query: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var rule models.TodoistHabiticaTextRule
+		err := rows.Scan(&rule.Name, &rule.Rule, &rule.HabitId)
+		if err != nil {
+			return rules, fmt.Errorf("error scanning text rule row: %w", err)
+		}
+		rules = append(rules, rule)
+	}
+	return rules, nil
+}
+
+func (s *service) GetTodoistHabiticaProjectRule(projectId string) (models.TodoistHabiticaProjectRule, error) {
+	var rule models.TodoistHabiticaProjectRule
+	row := s.db.QueryRow(
+		`SELECT name, todoistProjectId, habitId FROM TodoistHabitProjectRule WHERE todoistProjectId = ?`,
+		projectId,
+	)
+	if err := row.Scan(&rule.Name, &rule.ProjectId, &rule.HabitId); err != nil {
+		return rule, fmt.Errorf("error retrieving todoist project rule: %w", err)
+	}
+	return rule, nil
 }

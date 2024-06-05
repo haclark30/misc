@@ -2,11 +2,15 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"log"
+	"log/slog"
 	"net/http"
 
-	"github.com/a-h/templ"
 	"misc/cmd/web"
+	"misc/internal/models"
+
+	"github.com/a-h/templ"
 )
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -20,6 +24,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.Handle("/assets/", fileServer)
 	mux.Handle("/web", templ.Handler(web.HelloForm()))
 	mux.HandleFunc("/hello", web.HelloWebHandler)
+	mux.HandleFunc("POST /habiticaEvent", s.HabiticaWebhookHandler)
+	mux.HandleFunc("POST /todoistEvent", s.TodoistWebhookHandler)
 
 	return mux
 }
@@ -28,6 +34,8 @@ func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	resp := make(map[string]string)
 	resp["message"] = "Hello World"
 
+	req, _ := io.ReadAll(r.Body)
+	slog.Info("got req", "method", r.Method, "body", string(req))
 	jsonResp, err := json.Marshal(resp)
 	if err != nil {
 		log.Fatalf("error handling JSON marshal. Err: %v", err)
@@ -36,6 +44,42 @@ func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(jsonResp)
 }
 
+func (s *Server) HabiticaWebhookHandler(w http.ResponseWriter, r *http.Request) {
+	var req models.HabiticaWebhook
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		slog.Error("error decoding request", "err", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Task.Type != models.HabiticaHabitType {
+		slog.Info("got non habit task", "event", req)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	err = s.habService.CheckMinHabit(req.Task.Id, req.Task.Up)
+	if err != nil {
+		slog.Error("error checking habit", "err", err)
+	}
+}
+
+func (s *Server) TodoistWebhookHandler(w http.ResponseWriter, r *http.Request) {
+	var req models.TodoistWebhook
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		slog.Error("error decoding request", "err", err)
+		return
+	}
+	slog.Info("got todoist event", "event", req)
+
+	err = s.todoHabService.ScoreTask(req.EventData.Content, req.EventData.ProjectId)
+
+	if err != nil {
+		slog.Error("error scoring task", "err", err)
+		return
+	}
+}
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	jsonResp, err := json.Marshal(s.db.Health())
 
