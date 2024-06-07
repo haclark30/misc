@@ -35,8 +35,9 @@ jobs:
 
       - name: Build and Push API Image
         uses: docker/build-push-action@v5
-        context: .
-        file: /cmd/api/Dockerfile
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        with:
+          context: .
+          file: /cmd/api/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
