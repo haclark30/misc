@@ -18,8 +18,8 @@ type HabiticaMinHabitService struct {
 	updater DailyUpdater
 }
 
-func NewHabitcaMinHabitService(db HabitRuleStore, updater DailyUpdater) *HabiticaMinHabitService {
-	return &HabiticaMinHabitService{db: db, updater: updater}
+func NewHabitcaMinHabitService(db HabitRuleStore, updater DailyUpdater) HabiticaMinHabitService {
+	return HabiticaMinHabitService{db: db, updater: updater}
 }
 
 func (h *HabiticaMinHabitService) CheckMinHabit(habitId string, currScore int) error {

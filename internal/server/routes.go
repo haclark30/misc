@@ -26,6 +26,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	mux.HandleFunc("/hello", web.HelloWebHandler)
 	mux.HandleFunc("POST /habiticaEvent", s.HabiticaWebhookHandler)
 	mux.HandleFunc("POST /todoistEvent", s.TodoistWebhookHandler)
+	mux.HandleFunc("GET /widget", s.WidgetHandler)
 
 	return mux
 }
@@ -80,6 +81,16 @@ func (s *Server) TodoistWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (s *Server) WidgetHandler(w http.ResponseWriter, r *http.Request) {
+	resp := s.widgetService.GetWidgetResponse()
+	if len(resp.Errors) > 0 {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	json.NewEncoder(w).Encode(resp)
+}
+
 func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	jsonResp, err := json.Marshal(s.db.Health())
 
