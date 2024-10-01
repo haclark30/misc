@@ -44,6 +44,7 @@ func (s *TodoistHabiticaService) ScoreTask(taskStr, projectId string) error {
 
 	// check project rule
 	rule, err := s.db.GetTodoistHabiticaProjectRule(projectId)
+	slog.Info("got project rule", "rule", rule)
 	if err != nil {
 		return fmt.Errorf("error getting project rule: %w", err)
 	}

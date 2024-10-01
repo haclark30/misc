@@ -59,6 +59,7 @@ func (s *Server) HabiticaWebhookHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	slog.Info("checking habit", "id", req.Task.Id, "name", req.Task.Text)
 	err = s.habService.CheckMinHabit(req.Task.Id, req.Task.Up)
 	if err != nil {
 		slog.Error("error checking habit", "err", err)
@@ -72,7 +73,7 @@ func (s *Server) TodoistWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		slog.Error("error decoding request", "err", err)
 		return
 	}
-	slog.Info("got todoist event", "event", req)
+	slog.Info("got todoist event", "taskName", req.EventData.Content)
 
 	err = s.todoHabService.ScoreTask(req.EventData.Content, req.EventData.ProjectId)
 
