@@ -1,7 +1,10 @@
 package services
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
+	"log/slog"
 	"misc/internal/models"
 )
 
@@ -25,6 +28,10 @@ func NewHabitcaMinHabitService(db HabitRuleStore, updater DailyUpdater) Habitica
 func (h *HabiticaMinHabitService) CheckMinHabit(habitId string, currScore int) error {
 	rule, err := h.db.GetHabitRule(habitId)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			slog.Info("no habit rules found", "habitId", habitId)
+			return nil
+		}
 		return fmt.Errorf("error getting habit rule: %w", err)
 	}
 
