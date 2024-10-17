@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"misc/clients/habitica"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,12 +15,14 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
 	"github.com/charmbracelet/wish/activeterm"
 	"github.com/charmbracelet/wish/bubbletea"
 	"github.com/charmbracelet/wish/logging"
+	_ "github.com/joho/godotenv/autoload"
 )
 
 const (
@@ -86,7 +89,12 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 		bg = "dark"
 	}
 
+	habClient := habitica.NewHabiticaClient(
+		os.Getenv("HABITICA_API_USER"),
+		os.Getenv("HABITICA_API_KEY"),
+	)
 	m := model{
+		habClient: habClient,
 		term:      pty.Term,
 		profile:   renderer.ColorProfile().Name(),
 		width:     pty.Window.Width,
@@ -100,6 +108,7 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 
 // Just a generic tea.Model to demo terminal information of ssh.
 type model struct {
+	habClient habitica.HabiticaClient
 	term      string
 	profile   string
 	width     int
@@ -128,6 +137,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	s := fmt.Sprintf("Your term is %s\nYour window size is %dx%d\nBackground: %s\nColor Profile: %s", m.term, m.width, m.height, m.bg, m.profile)
-	return m.txtStyle.Render(s) + "\n\n" + m.quitStyle.Render("Press 'q' to quit\n")
+	// s := fmt.Sprintf("Your term is %s\nYour window size is %dx%d\nBackground: %s\nColor Profile: %s", m.term, m.width, m.height, m.bg, m.profile)
+	// return m.txtStyle.Render(s) + "\n\n" + m.quitStyle.Render("Press 'q' to quit\n")
+	title := "Kindle Dash"
+	dailys, err := m.habClient.GetDailys()
+	if err != nil {
+		log.Error("error getting dailys", "err", err)
+		return err.Error()
+	}
+	habs, err := m.habClient.GetHabits()
+	if err != nil {
+		log.Error("error getting habits", "err", err)
+	}
+	s := ""
+	for _, d := range dailys {
+		if d.Completed {
+			s += fmt.Sprintf("%s\n", lipgloss.NewStyle().Strikethrough(true).Render(d.Text))
+		} else {
+			s += fmt.Sprintf("%s\n", d.Text)
+		}
+	}
+
+	s = lipgloss.NewStyle().MarginLeft(10).Render(s)
+
+	habRows := make([][]string, 0)
+	for _, h := range habs {
+		habRows = append(habRows, []string{h.Text, fmt.Sprintf("%d", h.CounterUp)})
+	}
+	t := table.New().Border(lipgloss.HiddenBorder()).Rows(habRows...).Render()
+	return lipgloss.JoinVertical(lipgloss.Center, title, lipgloss.JoinHorizontal(lipgloss.Center, t, s))
+
 }
