@@ -106,6 +106,5 @@ func (h *HabiticaClient) GetDailys() ([]Daily, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
-
 	return habResp.Data, nil
 }

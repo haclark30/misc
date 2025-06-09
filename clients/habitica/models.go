@@ -47,6 +47,7 @@ type Daily struct {
 	Completed bool   `json:"completed"`
 	Repeat    Repeat `json:"repeat"`
 	IsDue     bool   `json:"isDue"`
+	Streak    int    `json:"streak"`
 	Task
 }
 

@@ -30,3 +30,6 @@ main
 
 # Databases
 *.db
+cmd/kindledash/.ssh
+.ssh
+.fitbit_token
