@@ -48,13 +48,17 @@ func createFitbitClient() *http.Client {
 		codeChan <- urlVals.Get("code")
 	})
 	srvPort := os.Getenv("FITBIT_REDIRECT_SERVER_PORT")
+	redirectHost := os.Getenv("FITBIT_REDIRECT_HOST")
+	if redirectHost == "" {
+		redirectHost = "localhost"
+	}
 	go http.ListenAndServe(fmt.Sprintf(":%s", srvPort), srv)
 
 	conf := &oauth2.Config{
 		ClientID:     os.Getenv("FITBIT_CLIENT_ID"),
 		ClientSecret: os.Getenv("FITBIT_CLIENT_SECRET"),
 		Scopes:       []string{"activity", "profile", "sleep", "nutrition"},
-		RedirectURL:  fmt.Sprintf("http://localhost:%s/callback", srvPort),
+		RedirectURL:  fmt.Sprintf("http://%s:%s/callback", redirectHost, srvPort),
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  "https://www.fitbit.com/oauth2/authorize",
 			TokenURL: "https://api.fitbit.com/oauth2/token",

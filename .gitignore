@@ -33,3 +33,4 @@ main
 cmd/kindledash/.ssh
 .ssh
 .fitbit_token
+bin
