@@ -74,6 +74,9 @@ func createFitbitClient() *http.Client {
 		fmt.Printf("visit url for auth: %v\n", url)
 		authToken := <-codeChan
 		token, err = conf.Exchange(ctx, authToken, oauth2.VerifierOption(verifier))
+		if err != nil {
+			slog.Error("error getting token", "err", err)
+		}
 		saveToken(token)
 	}
 
