@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -124,6 +125,9 @@ type model struct {
 	hygiene       []todoist.Task
 	activity      ActivityResponse
 	err           error
+	content       string
+	viewport      viewport.Model
+	ready         bool
 }
 
 func newModel(width, height int, renderer *lipgloss.Renderer) model {
@@ -195,10 +199,18 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 		m.width = msg.Width
+		if !m.ready {
+			m.viewport = viewport.New(msg.Width, msg.Height)
+			m.ready = true
+		} else {
+			m.viewport.Height = msg.Height
+			m.viewport.Width = msg.Width
+		}
 		slog.Info("window update", "height", m.height, "width", m.width)
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -225,7 +237,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		return m, tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg{} })
 	}
-	return m, nil
+	m.content = m.updateContent()
+	m.viewport.SetContent(m.content)
+	m.viewport, cmd = m.viewport.Update(msg)
+	return m, tea.Batch(cmd)
 }
 
 func (m model) updateHabitica() ([]habitica.Habit, []habitica.Daily) {
@@ -321,14 +336,10 @@ func (m model) updateHygiene() ([]todoist.Task, error) {
 	return todoResp, nil
 }
 
-func (m model) View() string {
+func (m model) updateContent() string {
 	if m.err != nil {
 		return "error updatating state"
 	}
-	// if true {
-	// 	return lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render("test")
-	// }
-	slog.Info("view", "habs", len(m.habs))
 	title := "Kindle Dash"
 	title = m.txtStyle.Align(lipgloss.Center, lipgloss.Center).Render(title)
 
@@ -348,7 +359,6 @@ func (m model) View() string {
 		lipgloss.Center,
 		stepsStr,
 		minStr,
-		// lipgloss.NewStyle().MarginLeft(10).Render(minStr),
 	)
 
 	dailyStr := ""
@@ -414,5 +424,8 @@ func (m model) View() string {
 	borderLen := utf8.RuneCountInString(lines[0])
 	slog.Info("got borderLen", "borderLen", borderLen, "borderStr", strconv.Quote(lines[0]))
 	return ret
+}
 
+func (m model) View() string {
+	return m.viewport.View()
 }
