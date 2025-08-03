@@ -199,7 +199,10 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
@@ -235,12 +238,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg{} })
 		}
 		m.err = nil
-		return m, tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg{} })
+
+		cmds = append(cmds, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
+			return tickMsg{}
+		}))
 	}
 	m.content = m.updateContent()
 	m.viewport.SetContent(m.content)
 	m.viewport, cmd = m.viewport.Update(msg)
-	return m, tea.Batch(cmd)
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m model) updateHabitica() ([]habitica.Habit, []habitica.Daily) {
