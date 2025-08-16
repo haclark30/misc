@@ -128,6 +128,7 @@ type model struct {
 	content       string
 	viewport      viewport.Model
 	ready         bool
+	weight        WeightResponse
 }
 
 func newModel(width, height int, renderer *lipgloss.Renderer) model {
@@ -190,6 +191,13 @@ func (m model) updateState() (model, error) {
 		return m, fmt.Errorf("error getting fitbit: %w", err)
 	}
 	m.activity = activity
+
+	weight, err := getFitbitWeight(m.fitbitClient)
+	if err != nil {
+		return m, err
+	}
+	m.weight = weight
+	slog.Info("got weight", "weight", weight)
 	m.err = nil
 	return m, nil
 }
@@ -361,11 +369,16 @@ func (m model) updateContent() string {
 		m.activity.Summary.VeryActiveMinutes,
 		m.activity.Goals.ActiveMinutes,
 	)
+	weightStr := fmt.Sprintf(
+		"%.2f pounds",
+		m.weight.WeightRecords[len(m.weight.WeightRecords)-1].Weight,
+	)
 
 	fitbitStr := lipgloss.JoinVertical(
 		lipgloss.Center,
 		stepsStr,
 		minStr,
+		weightStr,
 	)
 
 	dailyStr := ""

@@ -27,6 +27,15 @@ type ActivityResponse struct {
 	Goals   FitbitGoals   `json:"goals"`
 }
 
+type WeightResponse struct {
+	WeightRecords []WeightRecord `json:"weight"`
+}
+
+type WeightRecord struct {
+	Weight float64 `json:"weight"`
+	Date   string  `json:"date"`
+}
+
 type FitbitSummary struct {
 	Steps             int `json:"steps"`
 	VeryActiveMinutes int `json:"veryActiveMinutes"`
@@ -57,7 +66,7 @@ func createFitbitClient() *http.Client {
 	conf := &oauth2.Config{
 		ClientID:     os.Getenv("FITBIT_CLIENT_ID"),
 		ClientSecret: os.Getenv("FITBIT_CLIENT_SECRET"),
-		Scopes:       []string{"activity", "profile", "sleep", "nutrition"},
+		Scopes:       []string{"activity", "profile", "sleep", "nutrition", "weight", "sleep"},
 		RedirectURL:  fmt.Sprintf("http://%s:%s/callback", redirectHost, srvPort),
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  "https://www.fitbit.com/oauth2/authorize",
@@ -167,4 +176,33 @@ func getFitbitActivity(fitbitClient *http.Client) (ActivityResponse, error) {
 	}
 	slog.Info("got activity", "act", act)
 	return act, nil
+}
+
+func getFitbitWeight(fitbitClient *http.Client) (WeightResponse, error) {
+	today := time.Now().Format("2006-01-02")
+	var weightResponse WeightResponse
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("https://api.fitbit.com/1/user/-/body/log/weight/date/%s/7d.json", today),
+		nil,
+	)
+	if err != nil {
+		return weightResponse, err
+	}
+
+	req.Header.Add("accept-language", "en_US")
+
+	resp, err := fitbitClient.Do(req)
+	if err != nil {
+		return weightResponse, err
+	}
+	defer resp.Body.Close()
+
+	err = json.NewDecoder(resp.Body).Decode(&weightResponse)
+	if err != nil {
+		return weightResponse, err
+	}
+
+	return weightResponse, err
 }
