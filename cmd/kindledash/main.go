@@ -38,6 +38,7 @@ const (
 	Strikethrough = "\033[9m"
 	Reset         = "\033[0m"
 	MAXTODOS      = 5
+	REFRESHTIME   = 60 * time.Second
 )
 
 func main() {
@@ -78,7 +79,7 @@ func main() {
 
 	<-done
 	log.Info("Stopping SSH server")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), REFRESHTIME)
 	defer func() { cancel() }()
 	if err := s.Shutdown(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 		log.Error("Could not stop server", "error", err)
@@ -203,7 +204,7 @@ func (m model) updateState() (model, error) {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg{} })
+	return tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg { return tickMsg{} })
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -243,11 +244,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err != nil {
 			slog.Error("error updating state", "err", err)
 			m.err = fmt.Errorf("error updating state: %w", err)
-			return m, tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg{} })
+			return m, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg { return tickMsg{} })
 		}
 		m.err = nil
 
-		cmds = append(cmds, tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
+		cmds = append(cmds, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg {
 			return tickMsg{}
 		}))
 	}
@@ -440,9 +441,6 @@ func (m model) updateContent() string {
 	)
 
 	ret := style.String()
-	lines := strings.Split(ret, "\n")
-	borderLen := utf8.RuneCountInString(lines[0])
-	slog.Info("got borderLen", "borderLen", borderLen, "borderStr", strconv.Quote(lines[0]))
 	return ret
 }
 
