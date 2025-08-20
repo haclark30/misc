@@ -12,11 +12,8 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -38,7 +35,7 @@ const (
 	Strikethrough = "\033[9m"
 	Reset         = "\033[0m"
 	MAXTODOS      = 5
-	REFRESHTIME   = 60 * time.Second
+	REFRESHTIME   = 30 * time.Second
 )
 
 func main() {
@@ -46,10 +43,8 @@ func main() {
 		f, _ := tea.LogToFile("test.log", "")
 		defer f.Close()
 		m := newModel(10, 10, lipgloss.DefaultRenderer())
-		m, err := m.updateState()
-		if err != nil {
-			slog.Error("error updating state", "err", err)
-		}
+		m, _ = m.updateState()
+		m, _ = m.updateWeight()
 		prog := tea.NewProgram(m, tea.WithAltScreen())
 		prog.Run()
 		os.Exit(0)
@@ -105,10 +100,6 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 	// your Bubble Tea model.
 	renderer := bubbletea.MakeRenderer(s)
 	m := newModel(pty.Window.Width, pty.Window.Height, renderer)
-	m, err := m.updateState()
-	if err != nil {
-		slog.Error("error updating state", "err", err)
-	}
 	return m, []tea.ProgramOption{tea.WithAltScreen()}
 }
 
@@ -154,7 +145,11 @@ func newModel(width, height int, renderer *lipgloss.Renderer) model {
 	return m
 }
 
-type tickMsg struct{}
+type fullTickMsg struct{}
+
+type initTickMsg struct{}
+
+type weightTickMsg struct{}
 
 func (m model) updateState() (model, error) {
 	m.fitbitClient = createFitbitClient()
@@ -193,18 +188,14 @@ func (m model) updateState() (model, error) {
 	}
 	m.activity = activity
 
-	weight, err := getFitbitWeight(m.fitbitClient)
-	if err != nil {
-		return m, err
-	}
-	m.weight = weight
-	slog.Info("got weight", "weight", weight)
-	m.err = nil
 	return m, nil
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg { return tickMsg{} })
+	// start the ticks
+	return func() tea.Msg {
+		return initTickMsg{}
+	}
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -231,6 +222,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			var err error
 			m, err = m.updateState()
+			m, _ = m.updateWeight()
 			if err != nil {
 				slog.Error("error updating state", "err", err)
 				m.err = fmt.Errorf("error updating state: %w", err)
@@ -238,25 +230,55 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.err = nil
 		}
-	case tickMsg:
+	case fullTickMsg:
 		var err error
 		m, err = m.updateState()
 		if err != nil {
 			slog.Error("error updating state", "err", err)
 			m.err = fmt.Errorf("error updating state: %w", err)
-			return m, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg { return tickMsg{} })
+			return m, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg { return fullTickMsg{} })
 		}
 		m.err = nil
 
 		cmds = append(cmds, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg {
-			return tickMsg{}
+			return fullTickMsg{}
+		}))
+	case initTickMsg:
+		cmds = append(cmds, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg {
+			return fullTickMsg{}
+		}))
+		cmds = append(cmds, tea.Tick(1*time.Hour, func(t time.Time) tea.Msg {
+			return weightTickMsg{}
+		}))
+	case weightTickMsg:
+		m, err := m.updateWeight()
+		if err != nil {
+			m.err = fmt.Errorf("error updating weight: %w", err)
+			return m, tea.Tick(1*time.Hour, func(t time.Time) tea.Msg {
+				return weightTickMsg{}
+			})
+		}
+		cmds = append(cmds, tea.Tick(1*time.Hour, func(t time.Time) tea.Msg {
+			return weightTickMsg{}
 		}))
 	}
+
 	m.content = m.updateContent()
 	m.viewport.SetContent(m.content)
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 	return m, tea.Batch(cmds...)
+}
+
+func (m model) updateWeight() (model, error) {
+	weight, err := getFitbitWeight(m.fitbitClient)
+	if err != nil {
+		m.err = err
+		return m, err
+	}
+	m.weight = weight
+	slog.Info("got weight", "weight", weight)
+	return m, nil
 }
 
 func (m model) updateHabitica() ([]habitica.Habit, []habitica.Daily) {
@@ -370,10 +392,13 @@ func (m model) updateContent() string {
 		m.activity.Summary.VeryActiveMinutes,
 		m.activity.Goals.ActiveMinutes,
 	)
-	weightStr := fmt.Sprintf(
-		"%.2f pounds",
-		m.weight.WeightRecords[len(m.weight.WeightRecords)-1].Weight,
-	)
+	var weightStr string
+	if len(m.weight.WeightRecords) > 0 {
+		weightStr = fmt.Sprintf(
+			"%.2f pounds",
+			m.weight.WeightRecords[len(m.weight.WeightRecords)-1].Weight,
+		)
+	}
 
 	fitbitStr := lipgloss.JoinVertical(
 		lipgloss.Center,
