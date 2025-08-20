@@ -64,7 +64,7 @@ func createFitbitClient() *http.Client {
 	if redirectHost == "localhost" {
 		redirectUrl = "http://localhost:8001"
 	} else {
-		redirectUrl = fmt.Sprintf("https://%s", redirectHost)
+		redirectUrl = fmt.Sprintf("http://%s", redirectHost)
 	}
 	go http.ListenAndServe(":8001", srv)
 
@@ -84,12 +84,16 @@ func createFitbitClient() *http.Client {
 	if err != nil || token == nil {
 		verifier := oauth2.GenerateVerifier()
 
-		url := conf.AuthCodeURL("state", oauth2.AccessTypeOffline, oauth2.S256ChallengeOption(verifier))
+		url := conf.AuthCodeURL(
+			"state",
+			oauth2.AccessTypeOffline,
+			oauth2.S256ChallengeOption(verifier),
+		)
 		fmt.Printf("visit url for auth: %v\n", url)
 		authToken := <-codeChan
 		token, err = conf.Exchange(ctx, authToken, oauth2.VerifierOption(verifier))
 		if err != nil {
-			slog.Error("error getting token", "err", err)
+			slog.Error("error getting token", "err", err, "authToken", authToken)
 		}
 		saveToken(token)
 	}
@@ -203,6 +207,19 @@ func getFitbitWeight(fitbitClient *http.Client) (WeightResponse, error) {
 		return weightResponse, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		slog.Error(
+			"error code calling fitbit for weight",
+			"statusCode",
+			resp.StatusCode,
+			"respBody",
+			body,
+		)
+		return weightResponse, fmt.Errorf(
+			"error code calling fitbit for weight: %d", resp.StatusCode)
+	}
 
 	err = json.NewDecoder(resp.Body).Decode(&weightResponse)
 	if err != nil {
