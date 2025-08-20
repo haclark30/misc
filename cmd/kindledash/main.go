@@ -100,6 +100,8 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 	// your Bubble Tea model.
 	renderer := bubbletea.MakeRenderer(s)
 	m := newModel(pty.Window.Width, pty.Window.Height, renderer)
+	m, _ = m.updateState()
+	m, _ = m.updateWeight()
 	return m, []tea.ProgramOption{tea.WithAltScreen()}
 }
 
