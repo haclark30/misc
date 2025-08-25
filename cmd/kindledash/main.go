@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"misc/clients/habitica"
 	"misc/clients/todoist"
@@ -313,14 +314,22 @@ func (m model) updateChores() ([]todoist.Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error calling todoist: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		slog.Error("error calling todoist", "code", resp.StatusCode)
+		respStr, _ := io.ReadAll(resp.Body)
+		slog.Error(
+			"error calling todoist",
+			"code", resp.StatusCode,
+			"resp", respStr,
+		)
 	}
 
 	var todoResp []todoist.Task
 	err = json.NewDecoder(resp.Body).Decode(&todoResp)
 	if err != nil {
+		respStr, _ := io.ReadAll(resp.Body)
+		slog.Error("error decoding resp", "resp", respStr)
 		return nil, fmt.Errorf("error decoding todoist task resp: %w", err)
 	}
 	sortTodoistTasks(todoResp)
@@ -363,8 +372,15 @@ func (m model) updateHygiene() ([]todoist.Task, error) {
 		return nil, fmt.Errorf("error calling todoist: %w", err)
 	}
 
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
-		slog.Error("error calling todoist", "code", resp.StatusCode)
+		respStr, _ := io.ReadAll(resp.Body)
+		slog.Error(
+			"error calling todoist",
+			"code", resp.StatusCode,
+			"resp", respStr,
+		)
 	}
 
 	var todoResp []todoist.Task
