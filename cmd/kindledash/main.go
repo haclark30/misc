@@ -459,9 +459,9 @@ func (m model) updateContent() string {
 	hygieneTable := table.New().Border(lipgloss.HiddenBorder()).Rows(hygieneRows...).Render()
 	hygieneTable = lipgloss.NewStyle().MarginLeft(5).Render(hygieneTable)
 
-	pad := m.width / 2
-	slog.Info("set margin", "pad", pad)
-	style := lipgloss.NewStyle().Align(lipgloss.Center).Border(lipgloss.NormalBorder())
+	style := lipgloss.NewStyle().
+		Align(lipgloss.Center).
+		Border(lipgloss.NormalBorder())
 	style = style.SetString(
 		lipgloss.JoinVertical(
 			lipgloss.Center,
@@ -483,7 +483,13 @@ func (m model) updateContent() string {
 		),
 	)
 
-	ret := style.String()
+	ret := lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		style.String(),
+	)
 	return ret
 }
 
