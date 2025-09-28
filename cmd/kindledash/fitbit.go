@@ -23,8 +23,15 @@ type Token struct {
 }
 
 type ActivityResponse struct {
-	Summary FitbitSummary `json:"summary"`
-	Goals   FitbitGoals   `json:"goals"`
+	Activities []Activity    `json:"activities"`
+	Summary    FitbitSummary `json:"summary"`
+	Goals      FitbitGoals   `json:"goals"`
+}
+
+type Activity struct {
+	Name     string `json:"name"`
+	Duration int    `json:"duration"`
+	Steps    int    `json:"steps"`
 }
 
 type WeightResponse struct {
@@ -62,11 +69,11 @@ func createFitbitClient() *http.Client {
 	}
 	var redirectUrl string
 	if redirectHost == "localhost" {
-		redirectUrl = "http://localhost:8001"
+		redirectUrl = "http://localhost:8080"
 	} else {
 		redirectUrl = fmt.Sprintf("http://%s", redirectHost)
 	}
-	go http.ListenAndServe(":8001", srv)
+	go http.ListenAndServe(":8080", srv)
 
 	conf := &oauth2.Config{
 		ClientID:     os.Getenv("FITBIT_CLIENT_ID"),

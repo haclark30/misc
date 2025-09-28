@@ -50,6 +50,26 @@ func main() {
 		prog.Run()
 		os.Exit(0)
 	}
+	if len(os.Args) > 1 && os.Args[1] == "api" {
+		client := createFitbitClient()
+		url := fmt.Sprintf("https://api.fitbit.com/%s",
+			os.Args[2])
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		req.Header.Add("Accept-Language", "en_US")
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Fatal(err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(string(body))
+		os.Exit(0)
+	}
 	s, err := wish.NewServer(
 		wish.WithAddress(":23234"),
 		wish.WithHostKeyPath(".ssh/id_ed25519"),
@@ -396,8 +416,8 @@ func (m model) updateContent() string {
 	if m.err != nil {
 		return "error updatating state"
 	}
-	title := "Kindle Dash"
-	title = m.txtStyle.Align(lipgloss.Center, lipgloss.Center).Render(title)
+	title := time.Now().Format("Jan 2, 2006 3:04 PM")
+	title = lipgloss.NewStyle().Align(lipgloss.Right).Render(title)
 
 	stepsStr := fmt.Sprintf(
 		"%d / %d steps",
@@ -418,19 +438,26 @@ func (m model) updateContent() string {
 		)
 	}
 
-	fitbitStr := lipgloss.JoinVertical(
-		lipgloss.Center,
-		stepsStr,
-		minStr,
-		weightStr,
-	)
+	actTable := table.New().Border(lipgloss.HiddenBorder())
+	for _, act := range m.activity.Activities {
+		actMin := (act.Duration / 1000) / 60
+		actSec := (act.Duration / 1000) % 60
+		actTable.Row(
+			act.Name,
+			fmt.Sprintf("%d", act.Steps),
+			fmt.Sprintf("%dmin%dsec", actMin, actSec),
+		)
+	}
 
 	dailyStr := ""
 	dailyRows := make([][]string, 0)
 	for _, d := range m.dailys {
 		if d.IsDue && d.Completed {
 			dailyStr = Strikethrough + d.Text + Reset
-			dailyRows = append(dailyRows, []string{dailyStr, fmt.Sprintf("%d", d.Streak)})
+			dailyRows = append(
+				dailyRows,
+				[]string{dailyStr, fmt.Sprintf("%d", d.Streak)},
+			)
 		} else if d.IsDue {
 			dailyStr = fmt.Sprintf("%s", d.Text)
 			dailyRows = append(dailyRows, []string{dailyStr, fmt.Sprintf("%d", d.Streak)})
@@ -444,11 +471,12 @@ func (m model) updateContent() string {
 	for _, h := range m.habs {
 		habRows = append(habRows, []string{h.Text, fmt.Sprintf("%d", h.CounterUp)})
 	}
-	habitTable := table.New().Border(lipgloss.HiddenBorder()).Rows(habRows...).Render()
+	habitTable := table.New().Border(lipgloss.HiddenBorder()).Rows(append(dailyRows, habRows...)...).Render()
 
 	choreRows := make([][]string, 0)
 	for _, t := range m.chores {
-		choreRows = append(choreRows, []string{t.Content})
+		style := lipgloss.NewStyle().MaxWidth(18)
+		choreRows = append(choreRows, []string{style.Render(t.Content)})
 	}
 	choresTable := table.New().Border(lipgloss.HiddenBorder()).Rows(choreRows...).Render()
 
@@ -457,28 +485,29 @@ func (m model) updateContent() string {
 		hygieneRows = append(hygieneRows, []string{t.Content})
 	}
 	hygieneTable := table.New().Border(lipgloss.HiddenBorder()).Rows(hygieneRows...).Render()
-	hygieneTable = lipgloss.NewStyle().MarginLeft(5).Render(hygieneTable)
+	hygieneTable = lipgloss.NewStyle().Render(hygieneTable)
 
 	style := lipgloss.NewStyle().
 		Align(lipgloss.Center).
-		Border(lipgloss.NormalBorder())
+		Border(lipgloss.RoundedBorder())
+
+	title = lipgloss.JoinVertical(
+		lipgloss.Center,
+		title,
+		stepsStr,
+		minStr,
+		weightStr,
+	)
 	style = style.SetString(
 		lipgloss.JoinVertical(
 			lipgloss.Center,
 			title,
-			fitbitStr,
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				lipgloss.JoinHorizontal(
-					lipgloss.Top,
-					habitTable,
-					dailyTable,
-				),
-				lipgloss.JoinHorizontal(
-					lipgloss.Top,
-					choresTable,
-					hygieneTable,
-				),
+			actTable.Render(),
+			lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				habitTable,
+				lipgloss.NewStyle().MaxHeight(11).Render(choresTable),
+				lipgloss.NewStyle().MaxHeight(11).Render(hygieneTable),
 			),
 		),
 	)
