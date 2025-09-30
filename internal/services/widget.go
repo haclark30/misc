@@ -41,7 +41,7 @@ func (w *widgetService) GetWidgetResponse() models.WidgetResponse {
 		ch <- err
 
 		for _, h := range habits {
-			if h.Text == "Water | Alcohol" {
+			if h.Text == "Water" {
 				widgetResp.HabiticaWaterValue = h.CounterUp - h.CounterDown
 				widgetResp.HabiticaWaterGoal, _ = h.ParseGoal()
 			}
