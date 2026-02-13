@@ -1,30 +1,34 @@
 package todoist
 
+type TaskResp struct {
+	Tasks []Task `json:"results"`
+}
+
 type Task struct {
-	ID           string    `json:"id"`
-	ProjectId    string    `json:"project_id"`
-	SectionId    string    `json:"section_id"`
-	Content      string    `json:"content"`
-	Description  string    `json:"description"`
-	IsCompleted  bool      `json:"is_completed"`
-	Labels       []string  `json:"labels"`
-	ParentId     string    `json:"parent_id"`
-	Order        int       `json:"order"`
-	Priority     uint      `json:"priority"`
-	Due          Due       `json:"Due"`
-	Url          string    `json:"url"`
-	CommentCount uint      `json:"comment_count"`
-	CreatedAt    string    `json:"created_at"`
-	CreatorId    string    `json:"creator_id"`
-	AssigneeId   string    `json:"assignee_id"`
-	Duration     *Duration `json:"duration,omitempty"`
+	ID          string  `json:"id"`
+	ProjectId   string  `json:"project_id"`
+	SectionId   *string `json:"section_id"`
+	Content     string  `json:"content"`
+	Description string  `json:"description"`
+	// IsCompleted  bool      `json:"is_completed"`
+	// Labels   []string `json:"labels"`
+	// ParentId *string  `json:"parent_id"`
+	// Order        int       `json:"order"`
+	// Priority uint `json:"priority"`
+	// Due      Due  `json:"Due"`
+	// Url          string    `json:"url"`
+	// CommentCount uint      `json:"comment_count"`
+	// CreatedAt string `json:"added_ad"`
+	// CreatorId string `json:"added_by_uid"`
+	// AssigneeId   string    `json:"assignee_id"`
+	// Duration *Duration `json:"duration,omitempty"`
 }
 
 type Due struct {
 	String      string  `json:"string"`
 	Date        string  `json:"date"`
 	IsRecurring bool    `json:"is_recurring"`
-	Datetime    *string `json:"datetime,omitempty"`
+	Datetime    *string `json:"date,omitempty"`
 	Timezome    *string `json:"timezone,omitempty"`
 }
 
@@ -34,12 +38,9 @@ type Duration struct {
 }
 
 type TaskFilterOptions struct {
-	ProjectId string   `url:"project_id,omitempty"`
-	SectionId string   `url:"section_id,omitempty"`
-	Label     string   `url:"label,omitempty"`
-	Filter    string   `url:"filter,omitempty"`
-	Lang      string   `url:"lang,omitempty"`
-	IDs       []string `url:"ids,comma,omitempty"`
+	Query string `url:"query,omitempty"`
+	Lang  string `url:"lang,omitempty"`
+	Limit int    `url:"limit,omitempty"`
 }
 
 type Stats struct {

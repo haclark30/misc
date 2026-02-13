@@ -74,7 +74,8 @@ func (w *widgetService) GetWidgetResponse() models.WidgetResponse {
 
 	go func() {
 		filter := &todoist.TaskFilterOptions{
-			Filter: "today | od",
+			Query: "today | od",
+			Limit: 200,
 		}
 		tasks, err := w.tdTaskRepo.GetTasks(filter)
 		if err != nil {

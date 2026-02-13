@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-const baseURL = "https://api.todoist.com/rest/v2"
+const baseURL = "https://api.todoist.com/api/v1"
 const baseSyncUrl = "https://api.todoist.com/sync/v9"
 
 type TodoistClient struct {

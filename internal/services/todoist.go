@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"misc/clients/todoist"
 	"net/http"
@@ -19,7 +20,7 @@ func NewTodoistService(restClient *todoist.TodoistRestClient, syncClient *todois
 }
 
 func (t *TodoistService) GetTasks(filter *todoist.TaskFilterOptions) ([]todoist.Task, error) {
-	req, err := t.restClient.NewTodoistRequest(http.MethodGet, "tasks", nil)
+	req, err := t.restClient.NewTodoistRequest(http.MethodGet, "tasks/filter", nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create todoist tasks request: %w", err)
 	}
@@ -37,22 +38,23 @@ func (t *TodoistService) GetTasks(filter *todoist.TaskFilterOptions) ([]todoist.
 		return nil, fmt.Errorf("error calling todoist for tasks: %w", err)
 	}
 
-	var todoResp []todoist.Task
+	var todoResp todoist.TaskResp
+
 	err = json.NewDecoder(resp.Body).Decode(&todoResp)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding todoist task resp: %w", err)
 	}
 
-	return todoResp, nil
+	return todoResp.Tasks, nil
 }
 
 func (t *TodoistService) GetStats() (todoist.Stats, error) {
-	req, err := t.syncClient.NewTodoistRequest(http.MethodGet, "completed/get_stats", nil)
+	req, err := t.restClient.NewTodoistRequest(http.MethodGet, "tasks/completed/stats", nil)
 	if err != nil {
 		return todoist.Stats{}, fmt.Errorf("unable to create stats req: %w", err)
 	}
 
-	resp, err := t.syncClient.Client.Do(req)
+	resp, err := t.restClient.Client.Do(req)
 	if err != nil {
 		return todoist.Stats{}, fmt.Errorf("error calling todoist for stats: %w", err)
 	}
@@ -61,6 +63,9 @@ func (t *TodoistService) GetStats() (todoist.Stats, error) {
 	err = json.NewDecoder(resp.Body).Decode(&stats)
 	if err != nil {
 		return todoist.Stats{}, fmt.Errorf("error decoding todoist stats resp: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return todoist.Stats{}, errors.New("error from todoist api")
 	}
 
 	return stats, nil
