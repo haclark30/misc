@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"misc/clients/habitica"
 	"misc/clients/todoist"
@@ -13,10 +12,12 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -36,7 +37,6 @@ const (
 	Strikethrough = "\033[9m"
 	Reset         = "\033[0m"
 	MAXTODOS      = 5
-	REFRESHTIME   = 30 * time.Second
 )
 
 func main() {
@@ -44,30 +44,12 @@ func main() {
 		f, _ := tea.LogToFile("test.log", "")
 		defer f.Close()
 		m := newModel(10, 10, lipgloss.DefaultRenderer())
-		m, _ = m.updateState()
-		m, _ = m.updateWeight()
+		m, err := m.updateState()
+		if err != nil {
+			slog.Error("error updating state", "err", err)
+		}
 		prog := tea.NewProgram(m, tea.WithAltScreen())
 		prog.Run()
-		os.Exit(0)
-	}
-	if len(os.Args) > 1 && os.Args[1] == "api" {
-		client := createFitbitClient()
-		url := fmt.Sprintf("https://api.fitbit.com/%s",
-			os.Args[2])
-		req, err := http.NewRequest(http.MethodGet, url, nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-		req.Header.Add("Accept-Language", "en_US")
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Fatal(err)
-		}
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(string(body))
 		os.Exit(0)
 	}
 	s, err := wish.NewServer(
@@ -95,7 +77,7 @@ func main() {
 
 	<-done
 	log.Info("Stopping SSH server")
-	ctx, cancel := context.WithTimeout(context.Background(), REFRESHTIME)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer func() { cancel() }()
 	if err := s.Shutdown(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 		log.Error("Could not stop server", "error", err)
@@ -121,8 +103,10 @@ func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
 	// your Bubble Tea model.
 	renderer := bubbletea.MakeRenderer(s)
 	m := newModel(pty.Window.Width, pty.Window.Height, renderer)
-	m, _ = m.updateState()
-	m, _ = m.updateWeight()
+	m, err := m.updateState()
+	if err != nil {
+		slog.Error("error updating state", "err", err)
+	}
 	return m, []tea.ProgramOption{tea.WithAltScreen()}
 }
 
@@ -140,10 +124,6 @@ type model struct {
 	hygiene       []todoist.Task
 	activity      ActivityResponse
 	err           error
-	content       string
-	viewport      viewport.Model
-	ready         bool
-	weight        WeightResponse
 }
 
 func newModel(width, height int, renderer *lipgloss.Renderer) model {
@@ -168,11 +148,7 @@ func newModel(width, height int, renderer *lipgloss.Renderer) model {
 	return m
 }
 
-type fullTickMsg struct{}
-
-type initTickMsg struct{}
-
-type weightTickMsg struct{}
+type tickMsg struct{}
 
 func (m model) updateState() (model, error) {
 	m.fitbitClient = createFitbitClient()
@@ -210,33 +186,19 @@ func (m model) updateState() (model, error) {
 		return m, fmt.Errorf("error getting fitbit: %w", err)
 	}
 	m.activity = activity
-
+	m.err = nil
 	return m, nil
 }
 
 func (m model) Init() tea.Cmd {
-	// start the ticks
-	return func() tea.Msg {
-		return initTickMsg{}
-	}
+	return tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg{} })
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var (
-		cmd  tea.Cmd
-		cmds []tea.Cmd
-	)
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 		m.width = msg.Width
-		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height)
-			m.ready = true
-		} else {
-			m.viewport.Height = msg.Height
-			m.viewport.Width = msg.Width
-		}
 		slog.Info("window update", "height", m.height, "width", m.width)
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -245,7 +207,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			var err error
 			m, err = m.updateState()
-			m, _ = m.updateWeight()
 			if err != nil {
 				slog.Error("error updating state", "err", err)
 				m.err = fmt.Errorf("error updating state: %w", err)
@@ -253,54 +214,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.err = nil
 		}
-	case fullTickMsg:
+	case tickMsg:
 		var err error
 		m, err = m.updateState()
 		if err != nil {
 			slog.Error("error updating state", "err", err)
 			m.err = fmt.Errorf("error updating state: %w", err)
-			return m, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg { return fullTickMsg{} })
+			return m, tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg{} })
 		}
 		m.err = nil
-
-		cmds = append(cmds, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg {
-			return fullTickMsg{}
-		}))
-	case initTickMsg:
-		cmds = append(cmds, tea.Tick(REFRESHTIME, func(t time.Time) tea.Msg {
-			return fullTickMsg{}
-		}))
-		cmds = append(cmds, tea.Tick(1*time.Hour, func(t time.Time) tea.Msg {
-			return weightTickMsg{}
-		}))
-	case weightTickMsg:
-		m, err := m.updateWeight()
-		if err != nil {
-			m.err = fmt.Errorf("error updating weight: %w", err)
-			return m, tea.Tick(1*time.Hour, func(t time.Time) tea.Msg {
-				return weightTickMsg{}
-			})
-		}
-		cmds = append(cmds, tea.Tick(1*time.Hour, func(t time.Time) tea.Msg {
-			return weightTickMsg{}
-		}))
+		return m, tea.Tick(30*time.Second, func(t time.Time) tea.Msg { return tickMsg{} })
 	}
-
-	m.content = m.updateContent()
-	m.viewport.SetContent(m.content)
-	m.viewport, cmd = m.viewport.Update(msg)
-	cmds = append(cmds, cmd)
-	return m, tea.Batch(cmds...)
-}
-
-func (m model) updateWeight() (model, error) {
-	weight, err := getFitbitWeight(m.fitbitClient)
-	if err != nil {
-		m.err = err
-		return m, err
-	}
-	m.weight = weight
-	slog.Info("got weight", "weight", weight)
 	return m, nil
 }
 
@@ -318,9 +242,9 @@ func (m model) updateHabitica() ([]habitica.Habit, []habitica.Daily) {
 
 func (m model) updateChores() ([]todoist.Task, error) {
 	filter := todoist.TaskFilterOptions{
-		Filter: "##shared chores & (today | od)",
+		Query: "##shared chores & (today | od)",
 	}
-	req, err := m.todoistClient.NewTodoistRequest(http.MethodGet, "tasks", nil)
+	req, err := m.todoistClient.NewTodoistRequest(http.MethodGet, "tasks/filter", nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create todoist tasks request: %w", err)
 	}
@@ -334,40 +258,38 @@ func (m model) updateChores() ([]todoist.Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error calling todoist: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respStr, _ := io.ReadAll(resp.Body)
-		slog.Error(
-			"error calling todoist",
-			"code", resp.StatusCode,
-			"resp", respStr,
-		)
+		slog.Error("error calling todoist", "code", resp.StatusCode)
 	}
 
-	var todoResp []todoist.Task
+	var todoResp todoist.TaskResp
 	err = json.NewDecoder(resp.Body).Decode(&todoResp)
 	if err != nil {
-		respStr, _ := io.ReadAll(resp.Body)
-		slog.Error("error decoding resp", "resp", respStr)
 		return nil, fmt.Errorf("error decoding todoist task resp: %w", err)
 	}
-	sortTodoistTasks(todoResp)
-	return todoResp, nil
+	slog.Info("todo", "resp", todoResp.Tasks)
+	sortTodoistTasks(todoResp.Tasks)
+	return todoResp.Tasks, nil
 }
 
-func sortTodoistTasks(todoResp []todoist.Task) {
-	sort.Slice(todoResp, func(i, j int) bool {
+func sortTodoistTasks(tasks []todoist.Task) {
+	sort.Slice(tasks, func(i, j int) bool {
 		var iDate, jDate time.Time
-		if todoResp[i].Due.Datetime != nil {
-			iDate, _ = time.Parse("2006-01-02T15:04:05", *todoResp[i].Due.Datetime)
-		} else {
-			iDate, _ = time.Parse("2006-01-02", todoResp[i].Due.Date)
+		var err error
+
+		if tasks[i].Due.Date == nil || tasks[j].Due.Date == nil {
+			return true
 		}
-		if todoResp[j].Due.Datetime != nil {
-			jDate, _ = time.Parse("2006-01-02T15:04:05", *todoResp[j].Due.Datetime)
-		} else {
-			jDate, _ = time.Parse("2006-01-02", todoResp[j].Due.Date)
+		slog.Info("got sort tasks", "taski", tasks[i], "taskj", tasks[j])
+		iDate, err = time.Parse("2006-01-02T15:04:05", *tasks[i].Due.Date)
+		if err != nil {
+			iDate, _ = time.Parse("2006-01-02", *tasks[i].Due.Date)
+		}
+
+		jDate, err = time.Parse("2006-01-02T15:04:05", *tasks[i].Due.Date)
+		if err != nil {
+			jDate, _ = time.Parse("2006-01-02", *tasks[i].Due.Date)
 		}
 		return iDate.Before(jDate)
 	})
@@ -375,9 +297,9 @@ func sortTodoistTasks(todoResp []todoist.Task) {
 
 func (m model) updateHygiene() ([]todoist.Task, error) {
 	filter := &todoist.TaskFilterOptions{
-		Filter: "##health and hygiene & (today | od)",
+		Query: "##health and hygiene & (today | od)",
 	}
-	req, err := m.todoistClient.NewTodoistRequest(http.MethodGet, "tasks", nil)
+	req, err := m.todoistClient.NewTodoistRequest(http.MethodGet, "tasks/filter", nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create todoist tasks request: %w", err)
 	}
@@ -392,32 +314,29 @@ func (m model) updateHygiene() ([]todoist.Task, error) {
 		return nil, fmt.Errorf("error calling todoist: %w", err)
 	}
 
-	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		respStr, _ := io.ReadAll(resp.Body)
-		slog.Error(
-			"error calling todoist",
-			"code", resp.StatusCode,
-			"resp", respStr,
-		)
+		slog.Error("error calling todoist", "code", resp.StatusCode)
 	}
 
-	var todoResp []todoist.Task
+	var todoResp todoist.TaskResp
 	err = json.NewDecoder(resp.Body).Decode(&todoResp)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding todoist task resp: %w", err)
 	}
-	sortTodoistTasks(todoResp)
-	return todoResp, nil
+	sortTodoistTasks(todoResp.Tasks)
+	return todoResp.Tasks, nil
 }
 
-func (m model) updateContent() string {
+func (m model) View() string {
 	if m.err != nil {
 		return "error updatating state"
 	}
-	title := time.Now().Format("Jan 2, 2006 3:04 PM")
-	title = lipgloss.NewStyle().Align(lipgloss.Right).Render(title)
+	// if true {
+	// 	return lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render("test")
+	// }
+	slog.Info("view", "habs", len(m.habs))
+	title := "Kindle Dash"
+	title = m.txtStyle.Align(lipgloss.Center, lipgloss.Center).Render(title)
 
 	stepsStr := fmt.Sprintf(
 		"%d / %d steps",
@@ -430,34 +349,20 @@ func (m model) updateContent() string {
 		m.activity.Summary.VeryActiveMinutes,
 		m.activity.Goals.ActiveMinutes,
 	)
-	var weightStr string
-	if len(m.weight.WeightRecords) > 0 {
-		weightStr = fmt.Sprintf(
-			"%.2f pounds",
-			m.weight.WeightRecords[len(m.weight.WeightRecords)-1].Weight,
-		)
-	}
 
-	actTable := table.New().Border(lipgloss.HiddenBorder())
-	for _, act := range m.activity.Activities {
-		actMin := (act.Duration / 1000) / 60
-		actSec := (act.Duration / 1000) % 60
-		actTable.Row(
-			act.Name,
-			fmt.Sprintf("%d", act.Steps),
-			fmt.Sprintf("%dmin%dsec", actMin, actSec),
-		)
-	}
+	fitbitStr := lipgloss.JoinVertical(
+		lipgloss.Center,
+		stepsStr,
+		minStr,
+		// lipgloss.NewStyle().MarginLeft(10).Render(minStr),
+	)
 
 	dailyStr := ""
 	dailyRows := make([][]string, 0)
 	for _, d := range m.dailys {
 		if d.IsDue && d.Completed {
 			dailyStr = Strikethrough + d.Text + Reset
-			dailyRows = append(
-				dailyRows,
-				[]string{dailyStr, fmt.Sprintf("%d", d.Streak)},
-			)
+			dailyRows = append(dailyRows, []string{dailyStr, fmt.Sprintf("%d", d.Streak)})
 		} else if d.IsDue {
 			dailyStr = fmt.Sprintf("%s", d.Text)
 			dailyRows = append(dailyRows, []string{dailyStr, fmt.Sprintf("%d", d.Streak)})
@@ -471,12 +376,11 @@ func (m model) updateContent() string {
 	for _, h := range m.habs {
 		habRows = append(habRows, []string{h.Text, fmt.Sprintf("%d", h.CounterUp)})
 	}
-	habitTable := table.New().Border(lipgloss.HiddenBorder()).Rows(append(dailyRows, habRows...)...).Render()
+	habitTable := table.New().Border(lipgloss.HiddenBorder()).Rows(habRows...).Render()
 
 	choreRows := make([][]string, 0)
 	for _, t := range m.chores {
-		style := lipgloss.NewStyle().MaxWidth(18)
-		choreRows = append(choreRows, []string{style.Render(t.Content)})
+		choreRows = append(choreRows, []string{t.Content})
 	}
 	choresTable := table.New().Border(lipgloss.HiddenBorder()).Rows(choreRows...).Render()
 
@@ -485,43 +389,36 @@ func (m model) updateContent() string {
 		hygieneRows = append(hygieneRows, []string{t.Content})
 	}
 	hygieneTable := table.New().Border(lipgloss.HiddenBorder()).Rows(hygieneRows...).Render()
-	hygieneTable = lipgloss.NewStyle().Render(hygieneTable)
+	hygieneTable = lipgloss.NewStyle().MarginLeft(5).Render(hygieneTable)
 
-	style := lipgloss.NewStyle().
-		Align(lipgloss.Center).
-		Border(lipgloss.RoundedBorder())
-
-	title = lipgloss.JoinVertical(
-		lipgloss.Center,
-		title,
-		stepsStr,
-		minStr,
-		weightStr,
-	)
+	pad := m.width / 2
+	slog.Info("set margin", "pad", pad)
+	style := lipgloss.NewStyle().Align(lipgloss.Center).Border(lipgloss.NormalBorder())
 	style = style.SetString(
 		lipgloss.JoinVertical(
 			lipgloss.Center,
 			title,
-			actTable.Render(),
-			lipgloss.JoinHorizontal(
-				lipgloss.Top,
-				habitTable,
-				lipgloss.NewStyle().MaxHeight(11).Render(choresTable),
-				lipgloss.NewStyle().MaxHeight(11).Render(hygieneTable),
+			fitbitStr,
+			lipgloss.JoinVertical(
+				lipgloss.Left,
+				lipgloss.JoinHorizontal(
+					lipgloss.Top,
+					habitTable,
+					dailyTable,
+				),
+				lipgloss.JoinHorizontal(
+					lipgloss.Top,
+					choresTable,
+					hygieneTable,
+				),
 			),
 		),
 	)
 
-	ret := lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		style.String(),
-	)
+	ret := style.String()
+	lines := strings.Split(ret, "\n")
+	borderLen := utf8.RuneCountInString(lines[0])
+	slog.Info("got borderLen", "borderLen", borderLen, "borderStr", strconv.Quote(lines[0]))
 	return ret
-}
 
-func (m model) View() string {
-	return m.viewport.View()
 }

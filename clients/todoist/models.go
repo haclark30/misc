@@ -15,7 +15,7 @@ type Task struct {
 	// ParentId *string  `json:"parent_id"`
 	// Order        int       `json:"order"`
 	// Priority uint `json:"priority"`
-	// Due      Due  `json:"Due"`
+	Due Due `json:"due"`
 	// Url          string    `json:"url"`
 	// CommentCount uint      `json:"comment_count"`
 	// CreatedAt string `json:"added_ad"`
@@ -26,10 +26,8 @@ type Task struct {
 
 type Due struct {
 	String      string  `json:"string"`
-	Date        string  `json:"date"`
+	Date        *string `json:"date"`
 	IsRecurring bool    `json:"is_recurring"`
-	Datetime    *string `json:"date,omitempty"`
-	Timezome    *string `json:"timezone,omitempty"`
 }
 
 type Duration struct {
