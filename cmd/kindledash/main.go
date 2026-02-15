@@ -12,11 +12,8 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -391,8 +388,6 @@ func (m model) View() string {
 	hygieneTable := table.New().Border(lipgloss.HiddenBorder()).Rows(hygieneRows...).Render()
 	hygieneTable = lipgloss.NewStyle().MarginLeft(5).Render(hygieneTable)
 
-	pad := m.width / 2
-	slog.Info("set margin", "pad", pad)
 	style := lipgloss.NewStyle().Align(lipgloss.Center).Border(lipgloss.NormalBorder())
 	style = style.SetString(
 		lipgloss.JoinVertical(
@@ -416,9 +411,16 @@ func (m model) View() string {
 	)
 
 	ret := style.String()
-	lines := strings.Split(ret, "\n")
-	borderLen := utf8.RuneCountInString(lines[0])
-	slog.Info("got borderLen", "borderLen", borderLen, "borderStr", strconv.Quote(lines[0]))
+	// lines := strings.Split(ret, "\n")
+	// borderLen := utf8.RuneCountInString(lines[0])
+	// slog.Info("got borderLen", "borderLen", borderLen, "borderStr", strconv.Quote(lines[0]))
+	ret = lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		ret,
+	)
 	return ret
 
 }
